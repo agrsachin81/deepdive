@@ -24,6 +24,7 @@ public class ZeroOneTwoPrinter extends Thread{
         while(number.get() <100) {
             while(number.get() % this.divisor!= this.printWhenResult){
             }
+            //we need synchronized because of system.out lock
             synchronized (System.out) {
                 System.out.println(this.prefix + "  " + number.getAndIncrement() + " " + name);
             }

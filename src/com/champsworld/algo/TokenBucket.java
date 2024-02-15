@@ -99,9 +99,6 @@ public class TokenBucket {
         thread.start(); threads.add(thread);
         thread2.start();threads.add(thread2);
         thread3.start(); threads.add(thread3);
-        AllottingThread thisThread = new AllottingThread(random, bucket, max);
-        // threads.add(thisThread);
-        // thisThread.run();
         try {
             thread.join();
             thread2.join();
