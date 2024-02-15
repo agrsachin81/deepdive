@@ -3,6 +3,10 @@ package com.champsworld.learn;
 import java.lang.ref.WeakReference;
 import java.util.*;
 
+/**
+ * TO TEST WHETHER WEAK HASH MAP removes THread as key when they die
+ * Short lived Threads were put as keys in hashMap and WeakHashMap to see the difference
+ */
 public class WeakReferenceTests {
 
 
