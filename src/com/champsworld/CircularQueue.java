@@ -95,6 +95,7 @@ public final class CircularQueue<T> {
     private final AtomicInteger stampGenerator = new AtomicInteger(1);
 
     public CircularQueue(int initial_capacity) {
+        if(initial_capacity > INT_BOUNDARY_CHECK) throw new IllegalStateException("IInvalid initial Size can not be larger then "+INT_BOUNDARY_CHECK);
         this.qState = new AtomicStampedReference<>(new QState(initial_capacity), stampGenerator.getAndIncrement());
         cachedSwapState = ThreadLocal.withInitial(() -> new QState(this.qState.getReference().max_size));
     }
@@ -204,6 +205,8 @@ public final class CircularQueue<T> {
     public static void main(String[] args) {
         CircularQueue<Integer> queue = new CircularQueue<>(5);
         queue.add(1);
+        int value = queue.remove();
+        System.out.println(value);
         System.out.println(queue.isFull());
     }
 }
