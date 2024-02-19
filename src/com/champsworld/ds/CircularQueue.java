@@ -14,71 +14,81 @@ public final class CircularQueue<T> {
 
     //use ThreadLocal to recycle object, all the items inside must be volatile then
     //increase size data array is automatically shared with both objects, since with add and remove we dont change data reference at all
-    private static class QState {
-        volatile Object[] data;
-        volatile int consumeIdx;
-        volatile int produceIdx;
+    private static class QState<V> {
+        volatile V[] data;
+        AtomicInteger consumeIdx ;
+        AtomicInteger produceIdx;
         volatile int max_size;
 
         private QState(int max) {
-            this.data = new Object[max];
-            this.produceIdx = 0;
-            this.consumeIdx = 0;
+            this.data = (V[]) new Object[max];
+            this.produceIdx = new AtomicInteger(0);
+            this.consumeIdx = new AtomicInteger(0);
             this.max_size = max;
         }
 
         // for expanded
-        private QState(Object[] data, int max, int prod, int cons) {
+        private QState(V[] data, int max, int prod, int cons) {
             this.data = data;
-            this.produceIdx = prod;
-            this.consumeIdx = cons;
+            this.produceIdx = new AtomicInteger(prod);
+            this.consumeIdx = new AtomicInteger(cons);
             this.max_size = max;
         }
 
+        void addValue(V data){
+            final int dataIdx = produceIdx.getAndIncrement() % max_size;
+            this.data[dataIdx] = data;
+        }
 
-        void reset(QState state) {
+        V remove(){
+            int dataIdx = consumeIdx.getAndIncrement() % max_size;
+            final V value = data[dataIdx];
+            data[dataIdx] = null;
+            return value;
+        }
+
+
+        void reset(QState<V> state) {
             // case arrives when old cached copy has lesser size data array but new has grown
             if (max_size < state.max_size)
-                this.data = new Object[state.max_size];
+                this.data = (V[]) new Object[state.max_size];
 
             System.arraycopy(state.data, 0, this.data, 0, state.max_size);
 
-            this.produceIdx = state.produceIdx;
-            this.consumeIdx = state.consumeIdx;
+            this.produceIdx.set(state.produceIdx.get());
+            this.consumeIdx.set(state.consumeIdx.get());
             this.max_size = state.max_size;
         }
 
-        void reset(Object[] data, int prod, int cons, int max) {
+        void reset(V[] data, int prod, int cons, int max) {
             //used while reset is used on a newly created object in a loop
             this.data = data;
-            this.produceIdx = prod;
-            this.consumeIdx = cons;
+            this.produceIdx.set(prod);
+            this.consumeIdx.set(cons);
             this.max_size = max;
         }
 
         private boolean isFull() {
-            return (produceIdx - consumeIdx) == max_size;
+            return (produceIdx.get() - consumeIdx.get()) == max_size;
         }
 
         private boolean isEmpty() {
-            return produceIdx == consumeIdx;
+            return produceIdx.get() == consumeIdx.get();
         }
 
         public int size() {
-            return produceIdx - consumeIdx;
+            return produceIdx.get() - consumeIdx.get();
         }
 
         // produce idx is supposed to be always larger than consumeIdx
         // hence overfill will be managed by add only
         private void checkOverfill() {
-            if (produceIdx == INT_BOUNDARY_CHECK) {
-                int newProdIdx = produceIdx % max_size;
-                int newCondIdx = consumeIdx % max_size;
-
+            if (produceIdx.get() == INT_BOUNDARY_CHECK) {
+                final int newCondIdx = consumeIdx.get() % max_size;
                 //since isEmpty, isFull, size depends on the notion that produceIdx is always bigger or equal then the consumeIdx
-                if (newProdIdx < newCondIdx) newProdIdx += max_size;
-                produceIdx = newProdIdx;
-                consumeIdx = newCondIdx;
+                final int currIdx = produceIdx.get() % max_size;
+                produceIdx.set(currIdx < newCondIdx ? (currIdx +max_size) : currIdx);
+                consumeIdx.set(newCondIdx);
             }
         }
     }
@@ -89,24 +99,24 @@ public final class CircularQueue<T> {
 
 
     // stamped reference is needed for ABA problem since reference objects are recycled, it is also used for unique write signature 
-    private final AtomicStampedReference<QState> qState;
-    private final ThreadLocal<QState> cachedSwapState;
+    private final AtomicStampedReference<QState<T>> qState;
+    private final ThreadLocal<QState<T>> cachedSwapState;
     private final AtomicInteger stampGenerator = new AtomicInteger(1);
 
     public CircularQueue(int initial_capacity) {
-        if(initial_capacity > INT_BOUNDARY_CHECK) throw new IllegalStateException("IInvalid initial Size can not be larger then "+INT_BOUNDARY_CHECK);
-        this.qState = new AtomicStampedReference<>(new QState(initial_capacity), stampGenerator.getAndIncrement());
-        cachedSwapState = ThreadLocal.withInitial(() -> new QState(this.qState.getReference().max_size));
+        if(initial_capacity > INT_BOUNDARY_CHECK) throw new IllegalStateException("Invalid initial Size can not be larger then "+INT_BOUNDARY_CHECK);
+        this.qState = new AtomicStampedReference<>(new QState<>(initial_capacity), stampGenerator.getAndIncrement());
+        cachedSwapState = ThreadLocal.withInitial(() -> new QState<>(this.qState.getReference().max_size));
     }
 
     // queues item at the end of the queue
     public boolean add(T value) {
         if (value == null) throw new IllegalArgumentException(" NUll value not allowed");
         final int[] stampHolder = new int[1];
-        QState reference;
+        QState<T> reference;
         // the value of newStamp is only known to currentThread, each thread will have their own different value
         final int newStamp = stampGenerator.getAndIncrement();
-        QState newReference = cachedSwapState.get();
+        QState<T> newReference = cachedSwapState.get();
         while (true) {
             reference = this.qState.get(stampHolder);
             if (reference.isFull()) {
@@ -118,9 +128,7 @@ public final class CircularQueue<T> {
             }
             newReference.reset(reference);
             newReference.checkOverfill();
-            final int dataIdx = newReference.produceIdx % newReference.max_size;
-            newReference.data[dataIdx] = value;
-            newReference.produceIdx++;
+            newReference.addValue(value);
 
             if (this.qState.compareAndSet(reference, newReference, stampHolder[0], newStamp)) {
                 cachedSwapState.set(reference);
@@ -133,11 +141,11 @@ public final class CircularQueue<T> {
 
     // returns reference based on which it taken a decision not Full always return not full reference
     private boolean increaseSize() {
-        QState reference;
+        QState<T> reference;
         final int[] stampHolder = new int[1];
         final int newStamp = stampGenerator.getAndIncrement();
-        QState newReference = null;
-        Object[] data_swap = null;
+        QState<T> newReference = null;
+        T[] data_swap = null;
         int prevNewSize = 0;
         do {
             reference = this.qState.get(stampHolder);
@@ -145,12 +153,12 @@ public final class CircularQueue<T> {
             if (!reference.isFull()) return true;
             final int currSize = reference.max_size;
             final long doubleCurrSize = currSize * (long) 2;
-            int newSize = currSize;
+            int newSize ;
             if (doubleCurrSize > INT_BOUNDARY_CHECK) newSize = INT_BOUNDARY_CHECK;
             else newSize = (int) doubleCurrSize;
             if (newSize <= currSize) return false;
-            if (data_swap == null || newSize != prevNewSize) data_swap = new Object[newSize];
-            final int consIdx = reference.consumeIdx % currSize;
+            if (data_swap == null || newSize != prevNewSize) data_swap = (T[]) new Object[newSize];
+            final int consIdx = reference.consumeIdx.get() % currSize;
             if (consIdx != 0) {
                 // separately needs to copy both portions to the new array because it is full, so making it linear in new array
                 System.arraycopy(reference.data, consIdx, data_swap, 0, currSize - consIdx);
@@ -159,7 +167,7 @@ public final class CircularQueue<T> {
                 System.arraycopy(reference.data, 0, data_swap, 0, currSize);
             }
             if (newReference == null)
-                newReference = new QState(data_swap, newSize, currSize, 0);
+                newReference = new QState<>(data_swap, newSize, currSize, 0);
             else newReference.reset(data_swap, currSize, 0, newSize);
             prevNewSize = newSize;
         } while (!this.qState.compareAndSet(reference, newReference, stampHolder[0], newStamp));
@@ -168,20 +176,16 @@ public final class CircularQueue<T> {
 
     // removes the head of queue and returns it, null if queue is empty
     public T remove() {
-        QState reference;
-        final QState newReference = cachedSwapState.get();
+        QState<T> reference;
+        final QState<T> newReference = cachedSwapState.get();
         final int newStamp = stampGenerator.getAndIncrement();
         final int[] stampHolder = new int[1];
         T value;
         do {
             reference = this.qState.get(stampHolder);
-            int oldIdx = reference.consumeIdx;
-            if (reference.isEmpty()) return null;
-            int dataIdx = oldIdx % reference.max_size;
-            value = (T) reference.data[dataIdx];
             newReference.reset(reference);
-            newReference.consumeIdx++;
-            newReference.data[dataIdx] = null;
+            if (newReference.isEmpty()) return null;
+            value = reference.remove();
         } while (!this.qState.compareAndSet(reference, newReference, stampHolder[0], newStamp));
         cachedSwapState.set(reference);
         return value;
@@ -203,9 +207,9 @@ public final class CircularQueue<T> {
 
     public static void main(String[] args) {
         CircularQueue<Integer> queue = new CircularQueue<>(5);
-        queue.add(1);
-        int value = queue.remove();
-        System.out.println(value);
-        System.out.println(queue.isFull());
+        boolean res = queue.add(1);
+        Integer value = queue.remove();
+        System.out.println(value + " addRe "+res);
+        System.out.println(queue.isFull() + " "+queue.size() +" "+queue.isEmpty());
     }
 }
