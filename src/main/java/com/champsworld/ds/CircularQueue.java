@@ -124,7 +124,7 @@ public final class CircularQueue<T> {
                 // hence produceIdx and consumeIdx is of type Long
                 produceIdx.set(currIdx < newCondIdx ? (currIdx + max_size) : currIdx);
                 consumeIdx.set(newCondIdx);
-                System.out.println("RESET INDEXES consume "+consumeIdx.longValue() +" produce "+produceIdx.longValue());
+                // System.out.println("RESET INDEXES consume "+consumeIdx.longValue() +" produce "+produceIdx.longValue());
             }
         }
 
@@ -222,7 +222,7 @@ public final class CircularQueue<T> {
             else newReference.reset(data_swap, currSize, newSize);
             prevNewSize = newSize;
         } while (!this.qState.compareAndSet(reference, newReference, stampHolder[0], newStamp));
-        System.out.println("SUCCESSFULLY INCREASED CAPACITY "+newReference);
+        // System.out.println("SUCCESSFULLY INCREASED CAPACITY "+newReference);
         return true;
     }
 
@@ -270,14 +270,14 @@ public final class CircularQueue<T> {
                 if (res) testList.offer(l);
                 l++;
             }
-            System.out.println(" size " + queue.size() + " "+queue.qState.getReference().toString() +" added till-> ["+(l-1) +"] total dded ="+toAdd);
+           // System.out.println(" size " + queue.size() + " "+queue.qState.getReference().toString() +" added till-> ["+(l-1) +"] total dded ="+toAdd);
 
             if(queue.size() > 10000 && capacity > (INT_BOUNDARY_CHECK -2)){
                 final int toRemove = rand.nextInt(capacity/10);
                 for(int i=0; i<toRemove; i++) {
 
                     if(testList.isEmpty() && queue.isEmpty()) {
-                        System.out.println(i + " CAN NOT REMOVE FURTHER both queue Empty "+queue.qState.getReference());
+                        //System.out.println(i + " CAN NOT REMOVE FURTHER both queue Empty "+queue.qState.getReference());
                         break;
                     }
                     if(queue.isEmpty() && !testList.isEmpty()){
@@ -295,7 +295,7 @@ public final class CircularQueue<T> {
                         System.exit(1);
                     }
                 }
-                System.out.println(" size " + queue.size() + " "+queue.qState.getReference().toString() +" total Removed "+toRemove);
+               // System.out.println(" size " + queue.size() + " "+queue.qState.getReference().toString() +" total Removed "+toRemove);
             }
 
             capacity = queue.qState.getReference().max_size;
