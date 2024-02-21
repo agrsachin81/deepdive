@@ -32,7 +32,8 @@ public class OrderedTaskExecutorRaw {
      * for avoiding memory leak
      * It is used to decrease the orderingId count when item is added to reference queue
      * idea is to create a single entry in this map per OrderedTask object NOT per ordering Id,
-     * to ensure that hashCode and equals are made final at OrderedTask level, and they are based on System.identityHashcode
+     * the key are based on System.identityHashcode of the Task Object.
+     * Because it may happen that implementer has overridden hashCode method
     */
     private final HashMap<Integer, InterWeakReference> taskWeakReferenceMap;
     private final AtomicInteger execIdGenerator = new AtomicInteger();
@@ -95,9 +96,11 @@ public class OrderedTaskExecutorRaw {
             synchronized (taskWeakReferenceMap) {
                 // we need to ensure foe one OrderedTask instance one is created
                 // so that the counter can be decremented and task itself is cleared
-                if (!taskWeakReferenceMap.containsKey(task.hashCode())) {
+                final int hc = System.identityHashCode(task);
+                if (!taskWeakReferenceMap.containsKey(hc)) {
                     // further we need to have a kind of notification when the task is scheduled for garbage collected
-                    taskWeakReferenceMap.put(task.hashCode(), new InterWeakReference(task, gcEdTaskNotificationQueue));
+                    // inside InterWeakReference also uses System.identityCode
+                    taskWeakReferenceMap.put(hc, new InterWeakReference(task, gcEdTaskNotificationQueue));
                 }
             }
             startReaperThread();
@@ -205,6 +208,8 @@ public class OrderedTaskExecutorRaw {
 
     /**
      * The reference of the instance of ths class must never escape outside the class
+     * The reaper thread polls the ReferenceQueue for any WeakReference enqueued marking a particular task object
+     * not submitted to this Executor any longer
      */
     private static class ReaperThread extends Thread {
         private volatile OrderedTaskExecutorRaw outside;
@@ -290,12 +295,14 @@ public class OrderedTaskExecutorRaw {
         public InterWeakReference(OrderedTask<?> referent) {
             super(referent);
             this.orderingId = referent.orderingId();
+            // mandatory use of System.identityCode else key of map will not match
             this.hashCode = System.identityHashCode(referent);
         }
 
         public InterWeakReference(OrderedTask<?> referent, ReferenceQueue<OrderedTask<?>> queue) {
             super(referent, queue);
             this.orderingId = referent.orderingId();
+            // mandatory use of System.identityCode else key of map will not match
             this.hashCode = System.identityHashCode(referent);
         }
     }

@@ -259,18 +259,18 @@ public final class CircularQueue<T> {
     public static void main(String[] args) {
         int capacity = 50;
         Random rand = new Random();
-        CircularQueue<Long> queue = new CircularQueue<>(capacity);
+        CircularQueue<String> queue = new CircularQueue<>(capacity);
         System.out.println(queue.isFull() + " " + queue.size() + " " + queue.isEmpty());
-        LinkedList<Long> testList = new LinkedList<>();
+        LinkedList<String> testList = new LinkedList<>();
         for (long l=0; l< (Long.MAX_VALUE -2); l++){
 
             final int toAdd = rand.nextInt(capacity/10);
             for(int i=0; i<toAdd; i++) {
-                boolean res = queue.add(l);
-                if (res) testList.offer(l);
+                boolean res = queue.add(l+"");
+                if (res) testList.offer(l+"");
                 l++;
             }
-           // System.out.println(" size " + queue.size() + " "+queue.qState.getReference().toString() +" added till-> ["+(l-1) +"] total dded ="+toAdd);
+           System.out.println(" size " + queue.size() + " "+queue.qState.getReference().toString() +" added till-> ["+(l-1) +"] total dded ="+toAdd);
 
             if(queue.size() > 10000 && capacity > (INT_BOUNDARY_CHECK -2)){
                 final int toRemove = rand.nextInt(capacity/10);
@@ -288,14 +288,14 @@ public final class CircularQueue<T> {
                         System.out.println(i + " ERROR queue NOT Empty while test list IS empty "+queue.qState.getReference() + " Q SIZE "+queue.size());
                         System.exit(1);
                     }
-                    Long value = queue.remove();
-                    Long testVal = testList.remove();
+                    String value = queue.remove();
+                    String testVal = testList.remove();
                     if (!testVal.equals(value)) {
                         System.out.println(i + " ERROR removed actual " + value + " expected " + testVal);
                         System.exit(1);
                     }
                 }
-               // System.out.println(" size " + queue.size() + " "+queue.qState.getReference().toString() +" total Removed "+toRemove);
+               System.out.println(" size " + queue.size() + " "+queue.qState.getReference().toString() +" total Removed "+toRemove);
             }
 
             capacity = queue.qState.getReference().max_size;
