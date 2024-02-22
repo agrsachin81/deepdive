@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicStampedReference;
  * Array based Queue implementation (circular queue) FIFO
  * Non blocking implementation
  * make it grow by amortized way
+ * @author agrsachin81
  **/
 public final class CircularQueue<T> {
 

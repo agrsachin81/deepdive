@@ -5,6 +5,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * This class acts a mock test object for many WeakReference and other tests
+ * @author agrsachin81
  */
 public class FinalizeTest {
 
