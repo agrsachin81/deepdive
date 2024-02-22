@@ -6,13 +6,18 @@
 
     <groupId>com.champsworld.training</groupId>
     <artifactId>deepdive</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <version>0.1-SNAPSHOT</version>
 
     <properties>
         <maven.compiler.source>8</maven.compiler.source>
         <maven.compiler.target>8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
+
+    <scm>
+        <connection>scm:git:https://agrsachin81@github.com/deepdive.git</connection>
+        <developerConnection>scm:git:https://agrsachin81@github.com/deepdive.git</developerConnection>
+    </scm>
 
     <dependencies>
         <dependency>
