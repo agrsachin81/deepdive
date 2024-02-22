@@ -6,7 +6,7 @@
 
     <groupId>com.champsworld.training</groupId>
     <artifactId>deepdive</artifactId>
-    <version>0.1</version>
+    <version>0.2-SNAPSHOT</version>
 
     <properties>
         <maven.compiler.source>8</maven.compiler.source>
