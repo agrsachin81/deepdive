@@ -5,6 +5,7 @@ import com.google.common.collect.TreeMultimap;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
 /**
@@ -23,6 +24,8 @@ public class OrderedTaskExecutor {
     private final AtomicReferenceArray<ExecutorService> singleThreadPoolExecutor;
     private final NextPoolIndexCalculator threadPoolIndexCalculator;
 
+
+
     /**
      * The OrderedTaskExecutor keeps the decision of last Thread Pool used for each concurrencyId/orderingId; in memory.
      * maxCapacity is used to delete least recently used concurrencyId/orderingId's
@@ -36,11 +39,10 @@ public class OrderedTaskExecutor {
         System.out.println("OrderedTaskExecutor CREATED " + System.identityHashCode(this));
     }
 
-    public Future<?> submit(OrderedTask<?> task) {
+    public <T> CompletableFuture<T> submit(OrderedTask<T> task, int genNextUpdateId) {
         if (task == null) throw new NullPointerException("Unable to execute null");
         if (shutdownNow.get() || shutdown.get()) throw new RejectedExecutionException("Already shutdown");
         final int executorIndexForOrderingId = threadPoolIndexCalculator.getThreadPoolExecIndex(task.orderingId());
-
         if (singleThreadPoolExecutor.get(executorIndexForOrderingId) == null) {
             final ExecutorService executor = Executors.newSingleThreadExecutor();
             if (!singleThreadPoolExecutor.compareAndSet(executorIndexForOrderingId, null, executor)) {
@@ -59,7 +61,23 @@ public class OrderedTaskExecutor {
         }
 
         if (shutdownNow.get() || shutdown.get()) throw new RejectedExecutionException("Already shutdown");
-        return this.singleThreadPoolExecutor.get(executorIndexForOrderingId).submit(task);
+        final ExecutorService executorService = this.singleThreadPoolExecutor.get(executorIndexForOrderingId);
+        return CompletableFuture.supplyAsync(()->{
+            try {
+                return task.call();
+            } catch (Throwable e) {
+                System.out.println("TASK "+task.orderingId() +" "+System.identityHashCode(task) +" threw "+e.getMessage() +" orderIpdId "+genNextUpdateId);
+                throw new RuntimeException(e);
+            }
+        }, executorService);
+    }
+
+    public int getNextUpdateId(int orderingId){
+        return threadPoolIndexCalculator.getNextUpdatedId(orderingId);
+    }
+
+    public <T> CompletableFuture<T> submit(OrderedTask<T> task) {
+        return submit(task, getNextUpdateId(task.orderingId()));
     }
 
     /**
@@ -151,6 +169,8 @@ public class OrderedTaskExecutor {
         private final int[] indexCount;
         private final int size;
 
+        private final ConcurrentHashMap<Integer, AtomicInteger> updateIdGenerators = new ConcurrentHashMap<>();
+
         NextPoolIndexCalculator(final int size, final int maxCapacity) {
             this.size = size;
             indexCount = new int[size];
@@ -160,7 +180,10 @@ public class OrderedTaskExecutor {
                 protected boolean removeEldestEntry(Map.Entry<Integer, Integer> eldest) {
                     // TODO: decrease count for the index of this ordering Id
                     boolean remove = size() > maxCapacity;
-                    if (remove) decreaseCountForIndex(eldest.getValue());
+                    if (remove)  {
+                        decreaseCountForIndex(eldest.getValue());
+                        updateIdGenerators.remove(eldest.getKey());
+                    }
                     return remove;
                 }
             };
@@ -184,6 +207,11 @@ public class OrderedTaskExecutor {
                     countVsIndexMap.remove(count, index);
                 countVsIndexMap.put(count - 1, index);
             }
+        }
+
+        Integer getNextUpdatedId(Integer orderingId) {
+            AtomicInteger generator = updateIdGenerators.computeIfAbsent(orderingId, id -> new AtomicInteger(1));
+            return generator.getAndIncrement();
         }
 
         Integer getThreadPoolExecIndex(Integer orderingId) {
@@ -232,18 +260,23 @@ public class OrderedTaskExecutor {
     public static void main(String[] args) {
         OrderedTaskExecutor executor = new OrderedTaskExecutor(2000);
         OrderedTask<String> task = new SampleOrderedTask("Sample");
-        List<Future<?>> results = new ArrayList<>();
+        List<CompletableFuture<String>> results = new ArrayList<>();
         for (int i=0; i< 20; i++){
             results.add(executor.submit(task));
             results.add(executor.submit(new SampleOrderedTask("Sam" +i, i %5)));
             //System.out.println(retVal.get());
         }
-        for (Future<?> fut: results) {
-            try {
-                System.out.println(fut.get());
-            } catch (InterruptedException | ExecutionException e) {
-                throw new RuntimeException(e);
-            }
+        results.add(executor.submit( ()-> {
+            throw new Exception("Unable to perform task for xyz reasons");
+        }));
+        for (CompletableFuture<String> fut: results) {
+            fut.whenComplete((s, t )-> {
+                if(s!=null) {
+                    System.out.println(s);
+                } else {
+                    System.out.println(t.getMessage());
+                }
+            });
         }
 
         List<Throwable> value = executor.shutdown();
@@ -251,13 +284,17 @@ public class OrderedTaskExecutor {
             System.out.println(throwable.getMessage());
         }
         System.out.println(executor.isShutdown());
-        Object[] array = executor.shutdownNow();
-        for (Runnable val: (List<Runnable>)array[0]) {
-            System.out.println(" Runnable returned "+val.toString());
+        final Object[] array = executor.shutdownNow();
+        if(array[0] instanceof Collection<?>) {
+            for (Object val : (Collection<?>) array[0]) {
+                System.out.println(" Runnable returned " + val.toString());
+            }
         }
-
-        for (Throwable val: (List<Throwable>)array[1]) {
-            System.out.println(" Throw returned "+val.getMessage());
+        if(array[0] instanceof Collection<?>) {
+            for (Object val : (Collection<?>) array[1]) {
+                if (val instanceof Throwable)
+                    System.out.println(" Throw returned " + ((Throwable) val).getMessage());
+            }
         }
     }
 }
