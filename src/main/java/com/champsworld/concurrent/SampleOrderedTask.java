@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * @author agrsachin81
  */
-public class SampleOrderedTask implements OrderedTask<String>{
+public class SampleOrderedTask implements OrderedTask<String> {
 
     private final String prefix;
     private final int newOrderingId;
@@ -28,8 +28,12 @@ public class SampleOrderedTask implements OrderedTask<String>{
         this.newOrderingId = orderingId;
     }
 
-    @Override
-    public String call() throws Exception {
+    public String call() {
         return prefix+ " Completed "+ resultCounter.getAndIncrement() +" ConID -->["+orderingId() +"] "+Thread.currentThread().getName();
+    }
+
+    @Override
+    public String get() {
+        return call();
     }
 }

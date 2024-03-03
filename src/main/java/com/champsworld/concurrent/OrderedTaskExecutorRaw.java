@@ -49,7 +49,7 @@ public class OrderedTaskExecutorRaw {
      * this acts as a notification queue when gc add it to reference queue to gc
      * can not be shared outside at all
      */
-    private final ReferenceQueue<OrderedTask<?>> gcEdTaskNotificationQueue = new ReferenceQueue<>();
+    private final ReferenceQueue<OrderedCallable<?>> gcEdTaskNotificationQueue = new ReferenceQueue<>();
 
     public OrderedTaskExecutorRaw(){
         this.execArrayLength = Runtime.getRuntime().availableProcessors();
@@ -62,7 +62,7 @@ public class OrderedTaskExecutorRaw {
         System.out.println("OrderedTaskExecutor CREATED "+System.identityHashCode(this));
     }
 
-    public Future<?> submit(OrderedTask<?> task){
+    public Future<?> submit(OrderedCallable<?> task){
         if(task ==null) throw new NullPointerException("Unable to execute null");
         if(shutdownNow.get() || shutdown.get()) throw new RejectedExecutionException("Already shutdown");
         final int executorIndexForOrderingId = orderingIdPoolIndexMap.computeIfAbsent(task.orderingId(), (orderingId)->{
@@ -115,7 +115,7 @@ public class OrderedTaskExecutorRaw {
         }
     }
 
-    private int getOrderingIdCount(OrderedTask<?> task, boolean increase) {
+    private int getOrderingIdCount(OrderedCallable<?> task, boolean increase) {
         final AtomicInteger count ;
         if(increase) {
             count = orderingIdCount.compute(task.orderingId(), (orderingId, currentCount) -> {
@@ -254,10 +254,10 @@ public class OrderedTaskExecutorRaw {
      */
     private void checkReferenceQueue() throws InterruptedException {
         // waits for 500 millis only if not present
-        Reference<? extends OrderedTask<?>> refItem = gcEdTaskNotificationQueue.remove(500);
+        Reference<? extends OrderedCallable<?>> refItem = gcEdTaskNotificationQueue.remove(500);
         if(refItem!=null) {
             InterWeakReference taskReference = (InterWeakReference) refItem;
-            OrderedTask<?> task = taskReference.get();
+            OrderedCallable<?> task = taskReference.get();
             // task is always null testing using WeakReferenceTests
             // TODO: info level log if task is null or not
             final int orderingId = taskReference.orderingId;
@@ -289,18 +289,18 @@ public class OrderedTaskExecutorRaw {
     /**
      * It is necessary to cache hashCod and OrderingId both because ReferenceQueue returns only WekReference inside item is already cleared
      */
-    private static class InterWeakReference extends WeakReference<OrderedTask<?>>{
+    private static class InterWeakReference extends WeakReference<OrderedCallable<?>>{
 
         private final int hashCode ;
         private final int orderingId;
-        public InterWeakReference(OrderedTask<?> referent) {
+        public InterWeakReference(OrderedCallable<?> referent) {
             super(referent);
             this.orderingId = referent.orderingId();
             // mandatory use of System.identityCode else key of map will not match
             this.hashCode = System.identityHashCode(referent);
         }
 
-        public InterWeakReference(OrderedTask<?> referent, ReferenceQueue<OrderedTask<?>> queue) {
+        public InterWeakReference(OrderedCallable<?> referent, ReferenceQueue<OrderedCallable<?>> queue) {
             super(referent, queue);
             this.orderingId = referent.orderingId();
             // mandatory use of System.identityCode else key of map will not match

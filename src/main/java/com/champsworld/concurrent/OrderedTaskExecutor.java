@@ -39,37 +39,45 @@ public class OrderedTaskExecutor {
         System.out.println("OrderedTaskExecutor CREATED " + System.identityHashCode(this));
     }
 
+    public <T> CompletableFuture<T> submit(OrderedCallable<T> task, int genNextUpdateId) {
+        if (task == null) throw new NullPointerException("Unable to execute null" +genNextUpdateId);
+        return CompletableFuture.supplyAsync(()->{
+            try {
+                return task.call();
+            } catch (Throwable e) {
+                System.out.println("TASK "+task.orderingId() +" "+System.identityHashCode(task) +" threw "+e.getMessage() +" orderingSeqId "+genNextUpdateId);
+                throw new RuntimeException(e);
+            }
+        }, getExecutorService(task.orderingId(), genNextUpdateId));
+    }
+
     public <T> CompletableFuture<T> submit(OrderedTask<T> task, int genNextUpdateId) {
-        if (task == null) throw new NullPointerException("Unable to execute null");
-        if (shutdownNow.get() || shutdown.get()) throw new RejectedExecutionException("Already shutdown");
-        final int executorIndexForOrderingId = threadPoolIndexCalculator.getThreadPoolExecIndex(task.orderingId());
+        if (task == null) throw new NullPointerException("Unable to execute null" +genNextUpdateId);
+        return CompletableFuture.supplyAsync(task, getExecutorService(task.orderingId(), genNextUpdateId));
+    }
+
+    private ExecutorService getExecutorService(int taskOrderingId, final int genNextUpdateId) {
+        if (shutdownNow.get() || shutdown.get()) throw new RejectedExecutionException("Already shutdown rejected "+taskOrderingId +" ,"+genNextUpdateId);
+        final int executorIndexForOrderingId = threadPoolIndexCalculator.getThreadPoolExecIndex(taskOrderingId);
         if (singleThreadPoolExecutor.get(executorIndexForOrderingId) == null) {
             final ExecutorService executor = Executors.newSingleThreadExecutor();
             if (!singleThreadPoolExecutor.compareAndSet(executorIndexForOrderingId, null, executor)) {
                 // in case an executor already set for this index we must destroy it
                 // must catch throwable so that we complete the return of exeIndex
                 //TODO: VERBOSE LEVEL LOG
-                System.out.println("EXEC INDEX " + executorIndexForOrderingId + " already USED ");
+                System.out.println("EXEC INDEX " + executorIndexForOrderingId + " already USED "+taskOrderingId +" ,"+genNextUpdateId);
                 try {
                     executor.shutdownNow();
                 } catch (Throwable ignored) {
                 }
             } else {
                 //TODO: VERBOSE LEVEL LOG
-                System.out.println("EXEC INDEX " + executorIndexForOrderingId + " SUCCESSFULLY USED ");
+                System.out.println("EXEC INDEX " + executorIndexForOrderingId + " SUCCESSFULLY USED "+taskOrderingId +" ,"+genNextUpdateId);
             }
         }
 
-        if (shutdownNow.get() || shutdown.get()) throw new RejectedExecutionException("Already shutdown");
-        final ExecutorService executorService = this.singleThreadPoolExecutor.get(executorIndexForOrderingId);
-        return CompletableFuture.supplyAsync(()->{
-            try {
-                return task.call();
-            } catch (Throwable e) {
-                System.out.println("TASK "+task.orderingId() +" "+System.identityHashCode(task) +" threw "+e.getMessage() +" orderIpdId "+genNextUpdateId);
-                throw new RuntimeException(e);
-            }
-        }, executorService);
+        if (shutdownNow.get() || shutdown.get()) throw new RejectedExecutionException("Already shutdown" +taskOrderingId +" ,"+genNextUpdateId);
+        return this.singleThreadPoolExecutor.get(executorIndexForOrderingId);
     }
 
     public int getNextUpdateId(int orderingId){
@@ -267,7 +275,7 @@ public class OrderedTaskExecutor {
             //System.out.println(retVal.get());
         }
         results.add(executor.submit( ()-> {
-            throw new Exception("Unable to perform task for xyz reasons");
+            throw new RuntimeException("Unable to perform task for xyz reasons");
         }));
         for (CompletableFuture<String> fut: results) {
             fut.whenComplete((s, t )-> {
