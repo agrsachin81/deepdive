@@ -9,5 +9,5 @@ import java.util.function.Supplier;
  * @author agrsachin81
  */
 public interface OrderedTask<V> extends OrderedTaskSpec<V>, Supplier<V> {
-    
+
 }
