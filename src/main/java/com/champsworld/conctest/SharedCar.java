@@ -1,6 +1,9 @@
 package com.champsworld.conctest;
 
 import java.util.Random;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicStampedReference;
 
@@ -84,24 +87,23 @@ public class SharedCar {
 
     public static void main(String[] args) {
         SharedCar car = new SharedCar();
-        final Runnable runnable = () -> reserveDemocrat(car);
-        final Runnable runnable1 = () -> reserveRepublic(car);
+        int errorCount = 0;
+        ExecutorService executorService = Executors.newFixedThreadPool(5);
+        final Runnable democratBooker = () -> reserveDemocrat(car);
+        final Runnable republicanBooker = () -> reserveRepublic(car);
         for(int i=0; i<10000; i++){
-            Thread demTHread = new Thread(runnable);
-            Thread repThread = new Thread(runnable1);
-            repThread.start();
-            demTHread.start();
-            try {
-                repThread.join();
-                demTHread.join();
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
+            CompletableFuture<Void> demoFuture = CompletableFuture.runAsync(democratBooker, executorService);
+            CompletableFuture<Void> repuFuture = CompletableFuture.runAsync(republicanBooker, executorService);
 
-            if(demo.get() ==3 || repu.get()==3) {
-                System.out.println("ERROR------------------IDX " + i + "DEM " + demo.get() + " REP " + repu.get());
+            try {
+                Void ret = CompletableFuture.allOf(demoFuture, repuFuture).get();
+            } catch (Exception e) {}
+
+            if(demo.get() ==3 || repu.get()==3 || (repu.get() + demo.get()) !=4 ) {
+                System.out.println("ERROR------------------IDX " +errorCount + i + "DEM " + demo.get() + " REP " + repu.get());
+                errorCount ++;
             } else {
-                System.out.println("SUCCESS "+i);
+                System.out.println("SUCCESS "+i + " ERROR COUNT "+errorCount);
             }
             car.releaseCar();
             resetResultCounters();
