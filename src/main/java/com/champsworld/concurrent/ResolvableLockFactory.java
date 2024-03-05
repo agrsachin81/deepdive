@@ -180,12 +180,12 @@ public class ResolvableLockFactory {
     }
 
     public interface ResolvedLock extends Closeable {
-        public void lock() throws InterruptedException;
-        public boolean tryLock(int timeout, TimeUnit unit) throws InterruptedException;
+        void lock() throws InterruptedException;
+        boolean tryLock(int timeout, TimeUnit unit) throws InterruptedException;
 
-        public boolean tryLock() throws InterruptedException;
+        boolean tryLock() throws InterruptedException;
 
-        public boolean unLock();
+        boolean unLock();
 
         default void close(){
             unLock();

@@ -41,6 +41,11 @@ public class SharedCar {
             }
             return true;
         }
+
+        private void release() {
+            this.democrat.set(0);
+            this.republic.set(0);
+        }
     }
 
     private final AtomicInteger stamper = new AtomicInteger(1);
@@ -52,6 +57,14 @@ public class SharedCar {
 
     boolean isReady() {
         return this.currBookingState.getReference().isReady();
+    }
+
+    public boolean releaseCar() {
+        if(isReady()) {
+            this.currBookingState.getReference().release();
+            return true;
+        }
+        return false;
     }
 
     public boolean reserveDemocrat(){
@@ -85,6 +98,12 @@ public class SharedCar {
         return bookSlot(true);
     }
 
+
+    //++++++++++++++ TEST AREA STARTS
+    /**
+     *  TESTING
+     * @param args
+     */
     public static void main(String[] args) {
         SharedCar car = new SharedCar();
         int errorCount = 0;
@@ -97,40 +116,37 @@ public class SharedCar {
 
             try {
                 Void ret = CompletableFuture.allOf(demoFuture, repuFuture).get();
-            } catch (Exception e) {}
+            } catch (Exception ignored) {}
 
-            if(demo.get() ==3 || repu.get()==3 || (repu.get() + demo.get()) !=4 ) {
-                System.out.println("ERROR------------------IDX " +errorCount + i + "DEM " + demo.get() + " REP " + repu.get());
+            if(democrat.get() ==3 || republic.get()==3 || (republic.get() + democrat.get()) !=4 ) {
+                System.out.println("ERROR------------------IDX " +errorCount + i + "DEM " + democrat.get() + " REP " + republic.get());
                 errorCount ++;
             } else {
                 System.out.println("SUCCESS "+i + " ERROR COUNT "+errorCount);
             }
-            car.releaseCar();
+            boolean released = car.releaseCar();
+            if(!released) errorCount ++;
             resetResultCounters();
         }
+        executorService.shutdown();
     }
 
-    static final AtomicInteger demo = new AtomicInteger();
-    static final AtomicInteger repu = new AtomicInteger();
-
-    private void releaseCar() {
-        this.currBookingState.getReference().democrat.set(0);
-        this.currBookingState.getReference().republic.set(0);
-    }
+    static final AtomicInteger democrat = new AtomicInteger();
+    static final AtomicInteger republic = new AtomicInteger();
 
     /**
      * used only by tester
      */
     private static void resetResultCounters() {
-        demo.set(0);
-        repu.set(0);
+        democrat.set(0);
+        republic.set(0);
     }
 
     private static void reserveDemocrat(SharedCar car) {
         Random random = new Random();
         while(!car.isReady()) {
             boolean res = car.reserveDemocrat();
-            if(res) demo.getAndIncrement();
+            if(res) democrat.getAndIncrement();
             if(random.nextInt(40)% 2==0) {
                 try {
                     Thread.sleep(15);
@@ -145,7 +161,7 @@ public class SharedCar {
         Random random = new Random();
         while(!car.isReady()) {
             boolean res = car.reserveRepublic();
-            if(res) repu.getAndIncrement();
+            if(res) republic.getAndIncrement();
             if(random.nextInt(10)% 2==0) {
                 try {
                     Thread.sleep(15);
@@ -155,4 +171,6 @@ public class SharedCar {
             }
         }
     }
+
+    //++++++++++++++ TEST AREA ENDS
 }
