@@ -17,11 +17,11 @@ import java.util.concurrent.atomic.AtomicStampedReference;
  */
 public class SharedCar {
 
-    private static class CarState {
+    private static class BookingState {
         final AtomicInteger democrat = new AtomicInteger(0);
         final AtomicInteger republic =  new AtomicInteger(0);
 
-        void init(CarState state){
+        void init(BookingState state){
             this.democrat.set(state.democrat.get());
             this.republic.set(state.republic.get());
         }
@@ -44,14 +44,14 @@ public class SharedCar {
     }
 
     private final AtomicInteger stamper = new AtomicInteger(1);
-    private final AtomicStampedReference<CarState> currState = new AtomicStampedReference<>(new CarState(), stamper.getAndIncrement());
+    private final AtomicStampedReference<BookingState> currBookingState = new AtomicStampedReference<>(new BookingState(), stamper.getAndIncrement());
 
-    private final ThreadLocal<CarState> carStateThreadLocal=  ThreadLocal.withInitial(CarState::new);
+    private final ThreadLocal<BookingState> bookingStateThreadLocal =  ThreadLocal.withInitial(BookingState::new);
 
     private final ThreadLocal<int[]> stampHolderThreadLocal = ThreadLocal.withInitial(()-> new int[1]);
 
     boolean isReady() {
-        return this.currState.getReference().isReady();
+        return this.currBookingState.getReference().isReady();
     }
 
     public boolean reserveDemocrat(){
@@ -61,17 +61,17 @@ public class SharedCar {
 
     private boolean bookSlot(boolean republic) {
         if(isReady()) return false;
-        final CarState newState = carStateThreadLocal.get();
+        final BookingState newState = bookingStateThreadLocal.get();
         final int stamp = stamper.getAndIncrement();
         final int[] stampHolders = stampHolderThreadLocal.get();
         stampHolders[0] = -2;
         while(true){
-            CarState state = currState.get(stampHolders);
+            BookingState state = currBookingState.get(stampHolders);
             newState.init(state);
             if(newState.isReady()) return false;
             if(newState.bookSlot(republic)){
-                if(currState.compareAndSet(state, newState, stampHolders[0], stamp)){
-                    carStateThreadLocal.set(state);
+                if(currBookingState.compareAndSet(state, newState, stampHolders[0], stamp)){
+                    bookingStateThreadLocal.set(state);
                     return true;
                 }
             } else {
@@ -114,8 +114,8 @@ public class SharedCar {
     static final AtomicInteger repu = new AtomicInteger();
 
     private void releaseCar() {
-        this.currState.getReference().democrat.set(0);
-        this.currState.getReference().republic.set(0);
+        this.currBookingState.getReference().democrat.set(0);
+        this.currBookingState.getReference().republic.set(0);
     }
 
     /**
