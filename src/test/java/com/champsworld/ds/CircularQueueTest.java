@@ -1,6 +1,10 @@
 package com.champsworld.ds;
 
 import org.junit.jupiter.api.Test;
+
+import java.util.LinkedList;
+import java.util.Random;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -104,5 +108,42 @@ public class CircularQueueTest {
         queue.add(4); // Resize the queue
         assertEquals(4, queue.size());
         assertEquals(1, queue.peek());
+    }
+
+    @Test
+    public void testMultiThreadAddAndRemove() {
+        int capacity = 50;
+        Random rand = new Random();
+        CircularQueue<String> queue = new CircularQueue<>(capacity, 20000);
+        System.out.println(queue.isFull() + " " + queue.size() + " " + queue.isEmpty() +" "+queue.getMaxCapacity());
+        LinkedList<String> referenceImplList = new LinkedList<>();
+        for (long l=0; l< 10000; l++){
+
+            final int toAdd = rand.nextInt(capacity/10);
+            for(int i=0; i<toAdd; i++) {
+                boolean res = queue.add(l+"");
+                if (res) referenceImplList.offer(l+"");
+                l++;
+            }
+            System.out.println(" size " + queue.size() + " "+queue.getCurrentCapacity() +" added till-> ["+(l-1) +"] total dded ="+toAdd);
+
+            if(queue.size() > 10000 && capacity > (CircularQueue.INT_BOUNDARY_CHECK -2)){
+                final int toRemove = rand.nextInt(capacity/10);
+                for(int i=0; i<toRemove; i++) {
+
+                    if(referenceImplList.isEmpty() && queue.isEmpty()) {
+                        //System.out.println(i + " CAN NOT REMOVE FURTHER both queue Empty "+queue.qState.getReference());
+                        break;
+                    }
+                    assertEquals(referenceImplList.isEmpty(),queue.isEmpty() , " ERROR "+queue.getCurrentCapacity() + " TEST Q SIZE "+referenceImplList.size());
+                    String value = queue.remove();
+                    String testVal = referenceImplList.remove();
+                    assertEquals(testVal, value, i + " ERROR removed actual " + value + " expected " + testVal);
+                }
+                System.out.println(" size " + queue.size() + " "+queue.getCurrentCapacity() +" total Removed "+toRemove);
+            }
+
+            capacity = queue.getCurrentCapacity();
+        }
     }
 }

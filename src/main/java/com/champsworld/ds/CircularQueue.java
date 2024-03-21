@@ -1,8 +1,6 @@
 package com.champsworld.ds;
 
 import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicStampedReference;
@@ -17,7 +15,7 @@ import java.util.concurrent.atomic.AtomicStampedReference;
 public final class CircularQueue<T> {
 
     // the below variable must be of type int only
-    private static final int INT_BOUNDARY_CHECK =  Integer.MAX_VALUE -1;
+    public static final int INT_BOUNDARY_CHECK =  Integer.MAX_VALUE -1;
 
     //use ThreadLocal to recycle object, all the items inside must be volatile then
     //increase size data array is automatically shared with both objects, since with add and remove we dont change data reference at all
@@ -181,6 +179,14 @@ public final class CircularQueue<T> {
         return qState.getReference().peek();
     }
 
+    public int getMaxCapacity() {
+        return maxCapacity;
+    }
+
+    public int getCurrentCapacity() {
+        return this.qState.getReference().currentSize;
+    }
+
     public void clear() {
         final int[] stampHolder = new int[1];
         QState<T> reference;
@@ -298,49 +304,5 @@ public final class CircularQueue<T> {
         return this.qState.getReference().isFull();
     }
 
-    public static void main(String[] args) {
-        int capacity = 50;
-        Random rand = new Random();
-        CircularQueue<String> queue = new CircularQueue<>(capacity);
-        System.out.println(queue.isFull() + " " + queue.size() + " " + queue.isEmpty());
-        LinkedList<String> testList = new LinkedList<>();
-        for (long l=0; l< (Long.MAX_VALUE -2); l++){
 
-            final int toAdd = rand.nextInt(capacity/10);
-            for(int i=0; i<toAdd; i++) {
-                boolean res = queue.add(l+"");
-                if (res) testList.offer(l+"");
-                l++;
-            }
-           System.out.println(" size " + queue.size() + " "+queue.qState.getReference().toString() +" added till-> ["+(l-1) +"] total dded ="+toAdd);
-
-            if(queue.size() > 10000 && capacity > (INT_BOUNDARY_CHECK -2)){
-                final int toRemove = rand.nextInt(capacity/10);
-                for(int i=0; i<toRemove; i++) {
-
-                    if(testList.isEmpty() && queue.isEmpty()) {
-                        //System.out.println(i + " CAN NOT REMOVE FURTHER both queue Empty "+queue.qState.getReference());
-                        break;
-                    }
-                    if(queue.isEmpty() && !testList.isEmpty()){
-                        System.out.println(i + " ERROR queue Empty while test list not empty "+queue.qState.getReference() + " TEST Q SIZE "+testList.size());
-                        System.exit(1);
-                    }
-                    if(!queue.isEmpty() && testList.isEmpty()){
-                        System.out.println(i + " ERROR queue NOT Empty while test list IS empty "+queue.qState.getReference() + " Q SIZE "+queue.size());
-                        System.exit(1);
-                    }
-                    String value = queue.remove();
-                    String testVal = testList.remove();
-                    if (!testVal.equals(value)) {
-                        System.out.println(i + " ERROR removed actual " + value + " expected " + testVal);
-                        System.exit(1);
-                    }
-                }
-               System.out.println(" size " + queue.size() + " "+queue.qState.getReference().toString() +" total Removed "+toRemove);
-            }
-
-            capacity = queue.qState.getReference().currentSize;
-        }
-    }
 }
