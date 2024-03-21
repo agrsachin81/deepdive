@@ -39,6 +39,7 @@ class TokenBucketTest {
     public void testTokenBucketMultipleConsumes() {
         TokenBucket tokenBucket = new TokenBucket(10, 1); // Create a TokenBucket with capacity 10 and 1 token added per second
         assertTrue(tokenBucket.consume(5)); // Consume 5 tokens
+        assertTrue(tokenBucket.consume(2));
         assertFalse(tokenBucket.consume(6)); // Try to consume 6 tokens, should return false as there are not enough tokens
     }
 
