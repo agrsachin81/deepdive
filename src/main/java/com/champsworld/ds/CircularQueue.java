@@ -1,5 +1,6 @@
 package com.champsworld.ds;
 
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -18,13 +19,6 @@ public final class CircularQueue<T> {
     // the below variable must be of type int only
     private static final int INT_BOUNDARY_CHECK =  Integer.MAX_VALUE -1;
 
-    public T peek() {
-        if (isEmpty()) {
-            throw new IllegalStateException("Queue is empty");
-        }
-        return qState.getReference().peek();
-    }
-
     //use ThreadLocal to recycle object, all the items inside must be volatile then
     //increase size data array is automatically shared with both objects, since with add and remove we dont change data reference at all
     private static class QState<V> {
@@ -39,7 +33,7 @@ public final class CircularQueue<T> {
 
         //caching threshold so calculating only when max_size is changed, else we recalculate on each addition to queue
         final AtomicLong indexThreshold;
-        volatile int max_size;
+        volatile int currentSize;
 
         @SuppressWarnings("unchecked")
         private QState(int max) {
@@ -47,16 +41,15 @@ public final class CircularQueue<T> {
             this.produceIdx = new AtomicLong(0);
             this.consumeIdx = new AtomicLong(0);
             this.indexThreshold = new AtomicLong(calcIndexThreshold(max));
-            this.max_size = max;
+            this.currentSize = max;
         }
 
         static long calcIndexThreshold(int max_size){
-            // this cheque make sure that casting to int after modulo never fails for cases where dataIdx is created and
-            // since max_size is Integer.MAX_VALUE because of java max array size limit
+            // this check make sure that casting to int after modulo never fails for cases where dataIdx is created
+            // since max_size of data is Integer.MAX_VALUE because of java max array size limit
             // multiply by 2 is necessary unless we shall be adjusting indexes on each addition when max size is equal to INT_BOUNDARY_CHECK
             // and resetting the indexes with max int is necessary since we modulo it and want to cast it to int while accessing array
             // because for small max_size; if cons/prod idx grows too big then after dividing it with max_size it may overflow int
-            System.out.println("CHANGED INDEX THRESHOLD ====");
             return max_size < INT_BOUNDARY_CHECK ? INT_BOUNDARY_CHECK : ((INT_BOUNDARY_CHECK * 2L) -1);
         }
 
@@ -66,16 +59,16 @@ public final class CircularQueue<T> {
             this.produceIdx = new AtomicLong(prod);
             this.consumeIdx = new AtomicLong(0);
             this.indexThreshold = new AtomicLong(calcIndexThreshold(max));
-            this.max_size = max;
+            this.currentSize = max;
         }
 
         void addValue(V data) {
-            final int dataIdx = (int) (produceIdx.getAndIncrement() % max_size);
+            final int dataIdx = (int) (produceIdx.getAndIncrement() % currentSize);
             this.data[dataIdx] = data;
         }
 
         V remove() {
-            final int dataIdx = (int) (consumeIdx.getAndIncrement() % max_size);
+            final int dataIdx = (int) (consumeIdx.getAndIncrement() % currentSize);
             final V value = data[dataIdx];
             data[dataIdx] = null;
             return value;
@@ -85,15 +78,15 @@ public final class CircularQueue<T> {
         @SuppressWarnings("unchecked")
         void reset(QState<V> state) {
             // case arrives when old cached copy has lesser size data array but new has grown
-            if (max_size < state.max_size)
-                this.data = (V[]) new Object[state.max_size];
+            if (currentSize < state.currentSize)
+                this.data = (V[]) new Object[state.currentSize];
 
-            System.arraycopy(state.data, 0, this.data, 0, state.max_size);
+            System.arraycopy(state.data, 0, this.data, 0, state.currentSize);
 
             this.produceIdx.set(state.produceIdx.get());
             this.consumeIdx.set(state.consumeIdx.get());
-            if(state.max_size != this.max_size) {
-                this.max_size = state.max_size;
+            if(state.currentSize != this.currentSize) {
+                this.currentSize = state.currentSize;
                 this.indexThreshold.set(state.indexThreshold.get());
             }
         }
@@ -103,14 +96,14 @@ public final class CircularQueue<T> {
             this.data = data;
             this.produceIdx.set(prod);
             this.consumeIdx.set(0);
-            if(max != this.max_size) {
-                this.max_size = max;
+            if(max != this.currentSize) {
+                this.currentSize = max;
                 this.indexThreshold.set(calcIndexThreshold(max));
             }
         }
 
         private boolean isFull() {
-            return (produceIdx.get() - consumeIdx.get()) == max_size;
+            return (produceIdx.get() - consumeIdx.get()) == currentSize;
         }
 
         private boolean isEmpty() {
@@ -122,17 +115,16 @@ public final class CircularQueue<T> {
         }
 
         // produce idx is supposed to be always larger than consumeIdx
-        // hence overfill will be called by add only
+        // hence checkOverfill will be called by add only
         private void checkOverfill() {
             if (produceIdx.get() >=  this.indexThreshold.get()) {
-                final long newCondIdx = (consumeIdx.get() % max_size);
+                final long newCondIdx = (consumeIdx.get() % currentSize);
                 //since isEmpty, isFull, size depends on the notion that produceIdx is always bigger or equal then the consumeIdx
-                final long currIdx =  (produceIdx.get() % max_size);
-                // since after adding amx_size the produceIdx can go beyond Int range
+                final long currIdx =  (produceIdx.get() % currentSize);
+                // since after adding currentSize the produceIdx can go beyond Int range
                 // hence produceIdx and consumeIdx is of type Long
-                produceIdx.set(currIdx < newCondIdx ? (currIdx + max_size) : currIdx);
+                produceIdx.set(currIdx < newCondIdx ? (currIdx + currentSize) : currIdx);
                 consumeIdx.set(newCondIdx);
-                // System.out.println("RESET INDEXES consume "+consumeIdx.longValue() +" produce "+produceIdx.longValue());
             }
         }
 
@@ -142,13 +134,19 @@ public final class CircularQueue<T> {
                     "data=" + System.identityHashCode(data) +
                     ", consumeIdx=" + consumeIdx +
                     ", produceIdx=" + produceIdx +
-                    ", max_size=" + max_size +
+                    ", currentSize=" + currentSize +
                     '}';
         }
 
         public V peek() {
             if(isEmpty()) throw new IllegalArgumentException("Queue is Empty");
             return data[(int) consumeIdx.get()] ;
+        }
+
+        public void clear() {
+            this.produceIdx.set(0);
+            this.consumeIdx.set(0);
+            Arrays.fill(data, null);
         }
     }
 
@@ -157,20 +155,51 @@ public final class CircularQueue<T> {
     private final AtomicStampedReference<QState<T>> qState;
     private final ThreadLocal<QState<T>> cachedSwapState;
 
+    private final int maxCapacity;
+
     //if we use AtomicInteger we have to use getAndIncrement which will reset to zero when reach Integer_MAX_VALUE, our counter will be ok
     //since we are using only for stamps
     private final AtomicInteger stampGenerator = new AtomicInteger(1);
 
+    public CircularQueue(int initialCapacity, int maxCapacity) {
+        if (initialCapacity > maxCapacity)
+            throw new IllegalArgumentException("Invalid initial Size can not be larger then " + maxCapacity);
+        if(maxCapacity > INT_BOUNDARY_CHECK)
+            throw new IllegalArgumentException("Invalid max Size can not be larger then " + INT_BOUNDARY_CHECK);
+        this.maxCapacity = maxCapacity;
+        this.qState = new AtomicStampedReference<>(new QState<>(initialCapacity), stampGenerator.getAndIncrement());
+        cachedSwapState = ThreadLocal.withInitial(() -> new QState<>(this.qState.getReference().currentSize));
+    }
     public CircularQueue(int initial_capacity) {
-        if (initial_capacity > INT_BOUNDARY_CHECK)
-            throw new IllegalStateException("Invalid initial Size can not be larger then " + INT_BOUNDARY_CHECK);
-        this.qState = new AtomicStampedReference<>(new QState<>(initial_capacity), stampGenerator.getAndIncrement());
-        cachedSwapState = ThreadLocal.withInitial(() -> new QState<>(this.qState.getReference().max_size));
+        this(initial_capacity, INT_BOUNDARY_CHECK);
     }
 
+    public T peek() {
+        if (isEmpty()) {
+            throw new IllegalStateException("Queue is empty");
+        }
+        return qState.getReference().peek();
+    }
+
+    public void clear() {
+        final int[] stampHolder = new int[1];
+        QState<T> reference;
+        // the value of newStamp is only known to currentThread, each thread will have their own different value
+        final int newStamp = stampGenerator.getAndIncrement();
+        QState<T> newReference = cachedSwapState.get();
+        while (true) {
+            reference = this.qState.get(stampHolder);
+            newReference.clear();
+            if (this.qState.compareAndSet(reference, newReference, stampHolder[0], newStamp)) {
+                cachedSwapState.set(reference);
+                return ;
+            }
+        }
+    }
     // queues item at the end of the queue
     public boolean add(T value) {
         if (value == null) throw new IllegalArgumentException(" NUll value not allowed");
+        if(size() == maxCapacity) throw new IllegalStateException(" Queue is full");
         final int[] stampHolder = new int[1];
         QState<T> reference;
         // the value of newStamp is only known to currentThread, each thread will have their own different value
@@ -214,10 +243,10 @@ public final class CircularQueue<T> {
 
             // if 2 threads are doing increaseSize concurrently then the other needs to exit quietly
             if (!temp.isFull()) return true;
-            final int currSize = temp.max_size;
+            final int currSize = temp.currentSize;
             final long doubleCurrSize = currSize * (long) 2;
             int newSize;
-            if (doubleCurrSize > INT_BOUNDARY_CHECK) newSize = INT_BOUNDARY_CHECK;
+            if (doubleCurrSize > maxCapacity) newSize = maxCapacity;
             else newSize = (int) doubleCurrSize;
             if (newSize <= currSize) return false;
 
@@ -235,7 +264,6 @@ public final class CircularQueue<T> {
             else newReference.reset(data_swap, currSize, newSize);
             prevNewSize = newSize;
         } while (!this.qState.compareAndSet(reference, newReference, stampHolder[0], newStamp));
-        // System.out.println("SUCCESSFULLY INCREASED CAPACITY "+newReference);
         return true;
     }
 
@@ -312,7 +340,7 @@ public final class CircularQueue<T> {
                System.out.println(" size " + queue.size() + " "+queue.qState.getReference().toString() +" total Removed "+toRemove);
             }
 
-            capacity = queue.qState.getReference().max_size;
+            capacity = queue.qState.getReference().currentSize;
         }
     }
 }

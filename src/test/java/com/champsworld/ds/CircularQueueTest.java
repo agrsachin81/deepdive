@@ -62,4 +62,47 @@ public class CircularQueueTest {
         CircularQueue<Integer> queue = new CircularQueue<>(5);
         assertThrows(IllegalStateException.class, () -> queue.remove());
     }
+
+    @Test
+    public void testCapacityExceeded() {
+        CircularQueue<Integer> queue = new CircularQueue<>(1, 3);
+        queue.add(1);
+        queue.add(2);
+        queue.add(3);
+        assertThrows(IllegalStateException.class, () -> queue.add(4));
+    }
+
+    @Test
+    public void testClearQueue() {
+        CircularQueue<Integer> queue = new CircularQueue<>(5);
+        queue.add(1);
+        queue.add(2);
+        queue.add(3);
+        queue.clear();
+        assertEquals(0, queue.size());
+        assertThrows(IllegalStateException.class, () -> queue.peek());
+    }
+
+    @Test
+    public void testCircularBehaviorAfterClear() {
+        CircularQueue<Integer> queue = new CircularQueue<>(3);
+        queue.add(1);
+        queue.add(2);
+        queue.add(3);
+        queue.clear();
+        queue.add(4);
+        assertEquals(1, queue.size());
+        assertEquals(4, queue.peek());
+    }
+
+    @Test
+    public void testResizeQueue() {
+        CircularQueue<Integer> queue = new CircularQueue<>(3);
+        queue.add(1);
+        queue.add(2);
+        queue.add(3);
+        queue.add(4); // Resize the queue
+        assertEquals(4, queue.size());
+        assertEquals(1, queue.peek());
+    }
 }
