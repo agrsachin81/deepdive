@@ -18,6 +18,13 @@ public final class CircularQueue<T> {
     // the below variable must be of type int only
     private static final int INT_BOUNDARY_CHECK =  Integer.MAX_VALUE -1;
 
+    public T peek() {
+        if (isEmpty()) {
+            throw new IllegalStateException("Queue is empty");
+        }
+        return qState.getReference().peek();
+    }
+
     //use ThreadLocal to recycle object, all the items inside must be volatile then
     //increase size data array is automatically shared with both objects, since with add and remove we dont change data reference at all
     private static class QState<V> {
@@ -138,6 +145,11 @@ public final class CircularQueue<T> {
                     ", max_size=" + max_size +
                     '}';
         }
+
+        public V peek() {
+            if(isEmpty()) throw new IllegalArgumentException("Queue is Empty");
+            return data[(int) consumeIdx.get()] ;
+        }
     }
 
     // we have to use AtomicStampedReference, so for each increment we create new object as compareAndSet uses '==' and NOT equals
@@ -229,6 +241,7 @@ public final class CircularQueue<T> {
 
     // removes the head of queue and returns it, null if queue is empty
     public T remove() {
+        if(isEmpty()) throw new IllegalStateException("Queue is Empty");
         QState<T> reference;
         final QState<T> newReference = cachedSwapState.get();
         final int newStamp = stampGenerator.getAndIncrement();
