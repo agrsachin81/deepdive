@@ -1,11 +1,15 @@
 package com.champsworld.concurrent;
 
-import com.google.common.collect.TreeMultimap;
+import com.champsworld.algo.FixedResourceAllocator;
 
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
 /**
@@ -18,46 +22,48 @@ import java.util.concurrent.atomic.AtomicReferenceArray;
  */
 public class OrderedTaskExecutor {
     public static final int MAX_SINGLE_THREAD_POOL_COUNT = 100;
+    public static final int MAX_CONCURRENCY_ID_ALLOWED_AT_A_TIME = (Integer.MAX_VALUE-1) /2;
+
     private final AtomicBoolean shutdown = new AtomicBoolean(false);
     private final AtomicBoolean shutdownNow = new AtomicBoolean(false);
     private final int execArrayLength;
     private final AtomicReferenceArray<ExecutorService> singleThreadPoolExecutor;
-    private final NextPoolIndexCalculator threadPoolIndexCalculator;
-
-
+    private final FixedResourceAllocator threadPoolIndexCalculator;
 
     /**
      * The OrderedTaskExecutor keeps the decision of last Thread Pool used for each concurrencyId/orderingId; in memory.
-     * maxCapacity is used to delete least recently used concurrencyId/orderingId's
-     * @param maxCapacity, the maximum unique OrderingIds at a point in time
+     * maxCapacity is used to delete least recently used concurrencyId/orderingId's (half the max of Integer.MAX_VALUE)
+     * @param maxCapacity, the maximum number of unique OrderingIds present at a point in time, for which tasks are executing
      */
     public OrderedTaskExecutor(int maxCapacity) {
+        if(maxCapacity >= MAX_CONCURRENCY_ID_ALLOWED_AT_A_TIME)
+            throw new IllegalArgumentException("MAX CONCURRENCY ALLOWED IS < "+MAX_CONCURRENCY_ID_ALLOWED_AT_A_TIME);
         this.execArrayLength = Math.min(Runtime.getRuntime().availableProcessors(), MAX_SINGLE_THREAD_POOL_COUNT);
         this.singleThreadPoolExecutor = new AtomicReferenceArray<>(this.execArrayLength);
-        threadPoolIndexCalculator = new NextPoolIndexCalculator(this.execArrayLength, maxCapacity);
+        threadPoolIndexCalculator = new FixedResourceAllocator(this.execArrayLength, maxCapacity);
         //TODO: log with Info level
         //"OrderedTaskExecutor CREATED " + System.identityHashCode(this));
     }
 
     public <T> CompletableFuture<T> submit(OrderedCallable<T> task, int genNextUpdateId) {
-        if (task == null) throw new NullPointerException("Unable to execute null" +genNextUpdateId);
+        if (task == null) throw new NullPointerException("Unable to execute null-" +genNextUpdateId);
         return CompletableFuture.supplyAsync(()->{
             try {
                 return task.call();
-            } catch (Throwable e) {
-                throw new RuntimeException(e);
+            } catch (Throwable t) {
+                throw new RuntimeException(t);
             }
         }, getExecutorService(task.orderingId(), genNextUpdateId));
     }
 
     public <T> CompletableFuture<T> submit(OrderedTask<T> task, int genNextUpdateId) {
-        if (task == null) throw new NullPointerException("Unable to execute null" +genNextUpdateId);
+        if (task == null) throw new NullPointerException("Unable to execute null-" +genNextUpdateId);
         return CompletableFuture.supplyAsync(task, getExecutorService(task.orderingId(), genNextUpdateId));
     }
 
     private ExecutorService getExecutorService(int taskOrderingId, final int genNextUpdateId) {
-        if (shutdownNow.get() || shutdown.get()) throw new RejectedExecutionException("Already shutdown rejected "+taskOrderingId +" ,"+genNextUpdateId);
-        final int executorIndexForOrderingId = threadPoolIndexCalculator.getThreadPoolExecIndex(taskOrderingId);
+        if (shutdownNow.get() || shutdown.get()) throw new RejectedExecutionException("Executor is already shutdown; rejected "+taskOrderingId +" ,"+genNextUpdateId);
+        final int executorIndexForOrderingId = threadPoolIndexCalculator.getResourceIndex(taskOrderingId);
         if (singleThreadPoolExecutor.get(executorIndexForOrderingId) == null) {
             final ExecutorService executor = Executors.newSingleThreadExecutor();
             if (!singleThreadPoolExecutor.compareAndSet(executorIndexForOrderingId, null, executor)) {
@@ -151,116 +157,5 @@ public class OrderedTaskExecutor {
             }
         }
         return new Object[]{shutList, exc};
-    }
-
-    private static class NextPoolIndexCalculator {
-
-        /**
-         * Ordering id vs Index; a lru cache implementation ensuring least used orderingId is removed from cache
-         * to prevent memory leak
-         */
-        private final LinkedHashMap<Integer, Integer> lruMap;
-
-        /**
-         * used to ensure O(1) time complexity, while allotting index for a orderingId
-         * count vs list of indexes to keep the index on count with a tree map, we know the least allotted index
-         * so fairness is ensured by keeping count of each index, then we update the reverse map indexCount array
-         */
-        private final TreeMultimap<Integer, Integer> countVsIndexMap = TreeMultimap.create();
-
-        /**
-         * used to ensure O(1) time complexity, while removing ordering id from lruCache
-         * reverse map to quickly decrease the count for an index
-         * after this we update the reverse mapping
-         */
-        private final int[] indexCount;
-        private final int size;
-
-        private final ConcurrentHashMap<Integer, AtomicInteger> updateIdGenerators = new ConcurrentHashMap<>();
-
-        NextPoolIndexCalculator(final int size, final int maxCapacity) {
-            this.size = size;
-            indexCount = new int[size];
-            fillDefaultCountWithAllIndexes(size);
-            lruMap = new LinkedHashMap<Integer, Integer>(101, 0.75f, true) {
-                @Override
-                protected boolean removeEldestEntry(Map.Entry<Integer, Integer> eldest) {
-                    // decrease count for the index of this ordering Id
-                    boolean remove = size() > maxCapacity;
-                    if (remove)  {
-                        decreaseCountForIndex(eldest.getValue());
-                        updateIdGenerators.remove(eldest.getKey());
-                    }
-                    return remove;
-                }
-            };
-        }
-
-        private void fillDefaultCountWithAllIndexes(int size) {
-            for (int i = 0; i < size; i++) {
-                //initially all counts are zero
-                countVsIndexMap.put(0, i);
-                indexCount[i] = 0;
-            }
-        }
-
-        void decreaseCountForIndex(Integer index) {
-            // this is called from remove eldest entry, which in turn called from put or put all,
-            // which is called from getThreadPoolExecIndex
-            // hence we always lock lruMap first
-            synchronized (countVsIndexMap) {
-                final int count = indexCount[index];
-                if (countVsIndexMap.containsKey(count))
-                    countVsIndexMap.remove(count, index);
-                countVsIndexMap.put(count - 1, index);
-            }
-        }
-
-        Integer getNextUpdatedId(Integer orderingId) {
-            AtomicInteger generator = updateIdGenerators.computeIfAbsent(orderingId, id -> new AtomicInteger(1));
-            return generator.getAndIncrement();
-        }
-
-        Integer getThreadPoolExecIndex(Integer orderingId) {
-            synchronized (lruMap) {
-                if (lruMap.containsKey(orderingId)) {
-                    return lruMap.get(orderingId);
-                } else {
-                    synchronized (countVsIndexMap) {
-                        // allocation of index is done; which is least used
-                        int lowestCount = -1;
-                        NavigableSet<Integer> indexes = null;
-                        Integer index = null;
-                        while (indexes == null || index == null) {
-                            if (indexes != null)
-                                countVsIndexMap.removeAll(lowestCount);
-                            if (countVsIndexMap.isEmpty()) {
-                                fillDefaultCountWithAllIndexes(this.size);
-                            }
-                            lowestCount = countVsIndexMap.keySet().first();
-                            indexes = countVsIndexMap.get(lowestCount);
-                            // this removes the index from the value set
-                            index = indexes.pollFirst();
-                        }
-                        // we put it back with a different count
-                        final int newCount = lowestCount + 1;
-                        countVsIndexMap.put(newCount, index);
-                        indexCount[index] = newCount;
-                        lruMap.put(orderingId, index);
-                        return index;
-                    }
-                }
-            }
-        }
-
-        public void clear() {
-            synchronized (lruMap) {
-                synchronized (countVsIndexMap) {
-                    lruMap.clear();
-                    countVsIndexMap.clear();
-                    Arrays.fill(indexCount, 0);
-                }
-            }
-        }
     }
 }
