@@ -36,7 +36,7 @@ public class OrderedTaskExecutor {
         this.singleThreadPoolExecutor = new AtomicReferenceArray<>(this.execArrayLength);
         threadPoolIndexCalculator = new NextPoolIndexCalculator(this.execArrayLength, maxCapacity);
         //TODO: log with Info level
-        System.out.println("OrderedTaskExecutor CREATED " + System.identityHashCode(this));
+        //"OrderedTaskExecutor CREATED " + System.identityHashCode(this));
     }
 
     public <T> CompletableFuture<T> submit(OrderedCallable<T> task, int genNextUpdateId) {
@@ -45,7 +45,6 @@ public class OrderedTaskExecutor {
             try {
                 return task.call();
             } catch (Throwable e) {
-                System.out.println("TASK "+task.orderingId() +" "+System.identityHashCode(task) +" threw "+e.getMessage() +" orderingSeqId "+genNextUpdateId);
                 throw new RuntimeException(e);
             }
         }, getExecutorService(task.orderingId(), genNextUpdateId));
@@ -65,14 +64,14 @@ public class OrderedTaskExecutor {
                 // in case an executor already set for this index we must destroy it
                 // must catch throwable so that we complete the return of exeIndex
                 //TODO: VERBOSE LEVEL LOG
-                System.out.println("EXEC INDEX " + executorIndexForOrderingId + " already USED "+taskOrderingId +" ,"+genNextUpdateId);
+                //"EXEC INDEX " + executorIndexForOrderingId + " already USED "+taskOrderingId +" ,"+genNextUpdateId);
                 try {
                     executor.shutdownNow();
                 } catch (Throwable ignored) {
                 }
             } else {
                 //TODO: VERBOSE LEVEL LOG
-                System.out.println("EXEC INDEX " + executorIndexForOrderingId + " SUCCESSFULLY USED "+taskOrderingId +" ,"+genNextUpdateId);
+                //"EXEC INDEX " + executorIndexForOrderingId + " SUCCESSFULLY USED "+taskOrderingId +" ,"+genNextUpdateId);
             }
         }
 
@@ -98,7 +97,7 @@ public class OrderedTaskExecutor {
         List<Throwable> exc = Collections.emptyList();
         if (this.shutdown.compareAndSet(false, true)) {
             //TODO: INFO LEVEL LOG
-            System.out.println("OrderedTaskExecutor Shutdown " + System.identityHashCode(this));
+            //"OrderedTaskExecutor Shutdown " + System.identityHashCode(this));
             exc = new ArrayList<>();
             //TODO: INFO LEVEL LOG
             for (int i = 0; i < execArrayLength; i++) {
@@ -132,7 +131,7 @@ public class OrderedTaskExecutor {
         if (this.shutdownNow.compareAndSet(false, true)) {
             this.shutdown.set(true);
             //TODO: INFO LEVEL LOG
-            System.out.println("OrderedTaskExecutor ShutdownNow " + System.identityHashCode(this));
+            //"OrderedTaskExecutor ShutdownNow " + System.identityHashCode(this));
             shutList = new ArrayList<>();
             exc = new ArrayList<>();
             // no harm in clearing again
