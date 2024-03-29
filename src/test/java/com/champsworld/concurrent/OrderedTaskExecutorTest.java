@@ -1,6 +1,5 @@
-import com.champsworld.concurrent.OrderedTask;
-import com.champsworld.concurrent.OrderedTaskExecutor;
-import com.champsworld.concurrent.SampleOrderedTask;
+package com.champsworld.concurrent;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
