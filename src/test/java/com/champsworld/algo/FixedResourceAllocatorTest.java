@@ -1,6 +1,11 @@
 package com.champsworld.algo;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -8,6 +13,81 @@ import static org.junit.jupiter.api.Assertions.*;
  * @author agrsachin81
  */
 class FixedResourceAllocatorTest {
+
+    public static final int RESOURCE_SIZE = 3;
+    private FixedResourceAllocator allocator;
+
+    @BeforeEach
+    public void setUp() {
+        allocator = new FixedResourceAllocator(RESOURCE_SIZE, 10); // 3 resources, 10 max unique resource users
+    }
+
+    @Test
+    public void testGetResourceIndex() {
+        assertEquals(0, allocator.getResourceIndex(1));
+        assertEquals(1, allocator.getResourceIndex(2));
+        assertEquals(2, allocator.getResourceIndex(3));
+        assertEquals(0, allocator.getResourceIndex(4));
+        assertEquals(1, allocator.getResourceIndex(5));
+        assertEquals(2, allocator.getResourceIndex(6));
+    }
+
+    @Test
+    public void testGetNextUpdatedId() {
+        assertEquals(1, allocator.getNextUpdatedId(1));
+        assertEquals(2, allocator.getNextUpdatedId(1));
+        assertEquals(1, allocator.getNextUpdatedId(2));
+        assertEquals(1, allocator.getNextUpdatedId(3));
+    }
+
+    @Test
+    public void testGetResourceIndex_MaxUniqueResourceUsersExceeded() {
+        int index = allocator.getResourceIndex(0);
+        for (int i = 1; i < 2 * 10; i++) {
+            allocator.getResourceIndex(i); // allocate all resources to unique users
+        }
+        System.out.println(allocator.getCountMap());
+
+        assertTrue(allocator.getResourceIndex(20) < RESOURCE_SIZE,  "Still return valid index");
+        assertEquals(2*10, allocator.getResourceUserCount(), "after max user count the users remain same");
+        assertFalse(allocator.getResourceMapping().containsKey(0), "the eldest entry should have been deleted");
+    }
+
+    @Test
+    public void testGetResourceIndex_Cleared() {
+        assertEquals(0, allocator.getResourceIndex(1));
+        assertEquals(1, allocator.getResourceIndex(2));
+        allocator.clear();
+        // now it will restart from zero
+        assertEquals(0, allocator.getResourceIndex(2));
+        assertEquals(1, allocator.getResourceIndex(1));
+    }
+
+    @Test
+    public void testGetResourceIndex_MultipleThreads() throws InterruptedException {
+        allocator.clear();
+        Map<Integer, Integer> indexResourceMap = new HashMap<>();
+        Thread t1 = new Thread(() -> {
+            indexResourceMap.put(allocator.getResourceIndex(1), 1);
+        });
+
+        Thread t2 = new Thread(() -> {
+            indexResourceMap.put(allocator.getResourceIndex(2), 2);
+        });
+
+        Thread t3 = new Thread(() -> {
+            indexResourceMap.put(allocator.getResourceIndex(3), 3);
+        });
+
+        t1.start();
+        t2.start();
+        t3.start();
+
+        t1.join();
+        t2.join();
+        t3.join();
+        assertEquals(indexResourceMap.size(), RESOURCE_SIZE);
+    }
 
     @Test
     void testResourceIndexPurging() {
