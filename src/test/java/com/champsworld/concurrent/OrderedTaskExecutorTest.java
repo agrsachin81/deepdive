@@ -2,12 +2,10 @@ package com.champsworld.concurrent;
 
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import static java.util.stream.Collectors.mapping;
@@ -162,6 +160,73 @@ class OrderedTaskExecutorTest {
         assertNotNull(t, "exception should have been throw" );
         assertEquals(toThrow, t.getCause().getClass()," exception type did not match");
         executor.shutdown();
+    }
+
+
+    @Test
+    public void testShutDown(){
+        OrderedTaskExecutor executor = new OrderedTaskExecutor(20);
+        CountDownLatch latch = new CountDownLatch(1);
+        final String success = "SUCCESS";
+        CompletableFuture<String> future = getStringCompletableFuture(executor, latch, success);
+        executor.shutdown();
+        latch.countDown();
+        future.whenCompleteAsync( (result, excp) -> {
+            assertNull(excp, "Must have been successfully submitted as shutdown was called");
+            assertTrue(result.endsWith(success), "Must have successfully executed only after latch has been released");
+            System.out.println(result +" SHUTDOWN");
+        });
+        assertTrue(executor.isShutdown(), "executor is not shutdown yet");
+        verifySubmissionAfterShutdown(executor, "an exception must have thrown as task submitted after shutdown.");
+    }
+
+    @Test
+    public void testShutDownNow(){
+        OrderedTaskExecutor executor = new OrderedTaskExecutor(20);
+        final CountDownLatch latch = new CountDownLatch(2);
+
+        CompletableFuture<String> future = getStringCompletableFuture(executor, latch, "SUCCESS");
+        executor.shutdownNow();
+        assertTrue(executor.isShutdown(), "executor is not shutdown yet. Now");
+        latch.countDown();
+        latch.countDown();
+        try {
+            String result = future.get();
+            assertNull(result, "NOT executed only after latch has been released. Now");
+        } catch (InterruptedException | ExecutionException | RuntimeException ex) {
+            System.out.println(ex.getMessage());
+            assertNotNull(ex, "Must have been interrupted as shutdownNow was called. Now");
+        }
+        verifySubmissionAfterShutdown(executor, "an exception must have thrown as task submitted after shutdownNow");
+    }
+
+    private static void verifySubmissionAfterShutdown(OrderedTaskExecutor executor, String message) {
+        Throwable excp = null;
+        try {
+            executor.submit(() -> "NOT EXECUTED AT ALL");
+        } catch (Throwable e) {
+            excp = e;
+        }
+        assertNotNull(excp, message);
+    }
+
+    private static CompletableFuture<String> getStringCompletableFuture(OrderedTaskExecutor executor, CountDownLatch latch, String success) {
+        return executor.submit(() -> {
+            StringBuilder builder = new StringBuilder();
+            int i = 0;
+            while (latch.getCount() > 0) {
+                builder.append(i).append(",");
+                i++;
+                try {
+                    Thread.sleep(200);
+                } catch (InterruptedException ed) {
+                    throw new RuntimeException(ed);
+                }
+            }
+            System.out.println("RETURNED FROM SLEEPING TASK");
+            builder.append(" ").append(success);
+            return builder.toString();
+        });
     }
 }
 
