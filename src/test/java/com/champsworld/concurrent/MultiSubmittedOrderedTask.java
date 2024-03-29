@@ -3,9 +3,7 @@ package com.champsworld.concurrent;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.concurrent.BlockingDeque;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -35,17 +33,15 @@ public class MultiSubmittedOrderedTask implements OrderedTask<String>{
         this.newOrderingId = orderingId;
     }
 
-    private final BlockingDeque<Integer> submissionIds = new LinkedBlockingDeque<>();
+    private final BlockingQueue<Integer> submissionIds = new ArrayBlockingQueue<Integer>(1_000_000);
 
     public CompletableFuture<String> addSubmission(int subId, OrderedTaskExecutor executor){
-        synchronized (this) {
-            submissionIds.offer(subId);
-            return executor.submit(this);
-        }
+        submissionIds.offer(subId);
+        return executor.submit(this);
     }
 
     public String call() {
-        synchronized (this) {
+        //synchronized (this) {
             ts = System.nanoTime();
             try {
                 counter = submissionIds.take();
@@ -54,7 +50,7 @@ public class MultiSubmittedOrderedTask implements OrderedTask<String>{
             }
             execTimeStamps.put(ts, counter);
             return prefix + " Completed " + counter + " ConID -->[" + orderingId() + "] " + Thread.currentThread().getName() + " " + ts;
-        }
+        //}
     }
 
     @Override

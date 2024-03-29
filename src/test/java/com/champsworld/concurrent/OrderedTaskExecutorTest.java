@@ -22,15 +22,21 @@ class OrderedTaskExecutorTest {
     public void testExecutionOrderMultipleSubmittedTask() {
         final OrderedTaskExecutor executor = new OrderedTaskExecutor(2000);
         final MultiSubmittedOrderedTask task = new MultiSubmittedOrderedTask("Sample");
-        final List<CompletableFuture<String>> multiTaskResults = new ArrayList<>();
+        final List<CompletableFuture<String>> multiTaskResults = new ArrayList<>(30000);
 
-        for(int i=0;i < 300; i++){
+        for(int i=0;i < 100_000; i++){
             multiTaskResults.add(task.addSubmission(i, executor));
         }
 
+        System.out.println("GOT FUTURE COUNT "+multiTaskResults.size());
         CompletableFuture<Void> allFuture = CompletableFuture.allOf(multiTaskResults.toArray(new CompletableFuture[0]));
 
-        allFuture.whenCompleteAsync((a, b)-> {
+        try {
+            Thread.sleep(10000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        allFuture.whenComplete((a, b)-> {
             assertNull(b, "Exception thrown when executing same task. Same task can be submitted multiple times. Mandatory Requirement");
             final TreeMap<Long, Integer> execOrder = task.getExecTimeStamps();
             int previousValue = Integer.MIN_VALUE;
@@ -44,18 +50,21 @@ class OrderedTaskExecutorTest {
                 previousValue = currentValue;
             }
         });
+
+        allFuture.join();
+        System.out.println("FINISHED ");
         executor.shutdown();
     }
 
     @Test
     void testExecutionOrder() {
         final OrderedTaskExecutor executor = new OrderedTaskExecutor(2000);
-        final List<CompletableFuture<String>> results = new ArrayList<>();
-        final List<SampleOrderedTask> orderedTasks = new ArrayList<>();
-        final int MAX = 200;
+        final List<CompletableFuture<String>> results = new ArrayList<>(30000);
+        final List<SampleOrderedTask> orderedTasks = new ArrayList<>(400000);
+        final int MAX = 10_000;
         //first prepare and then submit in the same order
         for (int i=0; i< MAX; i++){
-            final int orderingId = i % 5;
+            final int orderingId = i % 200;
             final SampleOrderedTask testTask = new SampleOrderedTask("Sam" + i, orderingId);
             orderedTasks.add(testTask);
         }

@@ -185,7 +185,7 @@ public class OrderedTaskExecutor {
             lruMap = new LinkedHashMap<Integer, Integer>(101, 0.75f, true) {
                 @Override
                 protected boolean removeEldestEntry(Map.Entry<Integer, Integer> eldest) {
-                    // TODO: decrease count for the index of this ordering Id
+                    // decrease count for the index of this ordering Id
                     boolean remove = size() > maxCapacity;
                     if (remove)  {
                         decreaseCountForIndex(eldest.getValue());
@@ -227,7 +227,7 @@ public class OrderedTaskExecutor {
                     return lruMap.get(orderingId);
                 } else {
                     synchronized (countVsIndexMap) {
-                        // allocation of index is done is done which is least used
+                        // allocation of index is done; which is least used
                         int lowestCount = -1;
                         NavigableSet<Integer> indexes = null;
                         Integer index = null;
@@ -262,9 +262,5 @@ public class OrderedTaskExecutor {
                 }
             }
         }
-    }
-
-    public static void main(String[] args) {
-
     }
 }
